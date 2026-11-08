@@ -28,6 +28,18 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      # 1. Define a TCP router on the websecure (443) entrypoint
+      - "traefik.tcp.routers.my-app-tcp.rule=HostSNI(`${PUBLIC_URL:-}`)"
+      - "traefik.tcp.routers.my-app-tcp.entrypoints=websecure"
+      # 2. Enable TLS passthrough so Traefik does not decrypt traffic
+      - "traefik.tcp.routers.my-app-tcp.tls.passthrough=true"
+      # 3. Point to the container's internal HTTPS port (e.g., 443 or 8443)
+      - "traefik.tcp.services.my-app-tcp.loadbalancer.server.port=8000"
 
 volumes:
   ca-data:
+networks:
+  dokploy-network:
+    external: true
