@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certificate Authority</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --fg:#1d2330; --muted:#667085; --line:#e3e6ec; --accent:#2457d6; --accent-fg:#fff;
+          --danger:#c0392b; --ok:#1e8e5a; --code:#f0f2f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171e; --card:#1c212b; --fg:#e6e9ef; --muted:#97a0b0; --line:#2d3441; --accent:#6c93ff; --accent-fg:#0d1220;
+            --danger:#ff7a6b; --ok:#4cd694; --code:#252b37; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:0 24px; display:flex; align-items:center; gap:28px; position:sticky; top:0; z-index:5; }
+  header h1 { font-size:16px; margin:0; padding:14px 0; white-space:nowrap; }
+  nav { display:flex; gap:4px; overflow-x:auto; }
+  nav button { background:none; border:0; color:var(--muted); padding:16px 12px; cursor:pointer; font:inherit; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--fg); border-color:var(--accent); font-weight:600; }
+  main { max-width:1100px; margin:24px auto; padding:0 16px 60px; }
+  .tab { display:none; } .tab.active { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+  .card h2 { font-size:15px; margin:0 0 4px; } .card p.hint { color:var(--muted); margin:0 0 14px; }
+  details.card > summary { cursor:pointer; font-weight:600; font-size:15px; list-style:none; }
+  details.card > summary::before { content:"▸ "; color:var(--muted); } details[open].card > summary::before { content:"▾ "; }
+  details.card[open] > summary { margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  td.mono, .mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; word-break:break-all; }
+  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; }
+  input[type=text],input[type=number],input[type=password],select,textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--fg); font:inherit; }
+  textarea { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; min-height:110px; }
+  .check { display:inline-flex; align-items:center; gap:6px; margin:0 14px 6px 0; color:var(--fg); font-size:13px; }
+  .check input { margin:0; }
+  button.btn { background:var(--accent); color:var(--accent-fg); border:0; padding:8px 14px; border-radius:7px; cursor:pointer; font:inherit; font-weight:600; }
+  button.btn.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
+  button.btn.danger { background:transparent; color:var(--danger); border:1px solid var(--line); font-weight:500; }
+  button.btn.small { padding:3px 8px; font-size:12px; }
+  button:disabled { opacity:.6; cursor:wait; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .mt { margin-top:14px; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:99px; font-size:11px; font-weight:600; border:1px solid var(--line); color:var(--muted); }
+  .badge.root { color:var(--accent); border-color:var(--accent); } .badge.ok { color:var(--ok); border-color:var(--ok); } .badge.bad { color:var(--danger); border-color:var(--danger); }
+  pre { background:var(--code); padding:10px 12px; border-radius:7px; overflow:auto; font-size:12px; margin:8px 0; }
+  .sub { color:var(--muted); font-size:12px; }
+  #toast { position:fixed; right:18px; bottom:18px; max-width:420px; padding:11px 16px; border-radius:8px; background:var(--fg); color:var(--bg); display:none; z-index:10; box-shadow:0 6px 24px #0004; }
+  #toast.err { background:var(--danger); color:#fff; }
+  .subtle-box { background:var(--bg); border:1px dashed var(--line); border-radius:8px; padding:12px; margin-top:10px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔐 Certificate Authority</h1>
+  <nav id="nav">
+    <button data-tab="cas" class="active">Authorities</button>
+    <button data-tab="issue">Issue</button>
+    <button data-tab="certs">Certificates</button>
+    <button data-tab="acme">ACME &amp; TLS</button>
+  </nav>
+</header>
+<main>
+
+<section id="tab-cas" class="tab active">
+  <div class="card">
+    <h2>Certificate authorities</h2>
+    <p class="hint">Roots and intermediates managed here. CAs without a stored private key act as trust-chain members only and cannot sign.</p>
+    <div style="overflow-x:auto"><table id="cas-table"><thead><tr><th>Name</th><th>Type</th><th>Subject</th><th>Valid until</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <details class="card"><summary>Create root certificate</summary>
+    <form id="f-root"><div id="root-subject"></div>
+      <div class="grid mt">
+        <div><label>Display name (optional)</label><input type="text" name="name"></div>
+        <div><label>Key type</label><select name="key_type" class="kt"></select></div>
+        <div><label>Validity (days)</label><input type="number" name="days" value="7300" min="1"></div>
+        <div><label>Path length (empty = unlimited)</label><input type="number" name="path_length" min="0" max="10" placeholder="e.g. 1"></div>
+      </div>
+      <div class="mt"><button class="btn">Create root CA</button></div>
+    </form>
+  </details>
+
+  <details class="card"><summary>Create intermediate certificate</summary>
+    <form id="f-int"><div id="int-subject"></div>
+      <div class="grid mt">
+        <div><label>Issuing CA</label><select name="parent_id" class="signers"></select></div>
+        <div><label>Display name (optional)</label><input type="text" name="name"></div>
+        <div><label>Key type</label><select name="key_type" class="kt"></select></div>
+        <div><label>Validity (days)</label><input type="number" name="days" value="1825" min="1"></div>
+        <div><label>Path length</label><input type="number" name="path_length" value="0" min="0" max="10"></div>
+      </div>
+      <div class="subtle-box"><div class="sub" style="margin-bottom:6px">Name constraints (optional) — restrict which names this CA may ever issue for</div>
+        <div class="grid">
+          <div><label>Permitted DNS (comma-separated)</label><input type="text" name="permitted_dns" placeholder="example.internal"></div>
+          <div><label>Excluded DNS</label><input type="text" name="excluded_dns"></div>
+          <div><label>Permitted IP ranges (CIDR)</label><input type="text" name="permitted_ip" placeholder="10.0.0.0/8"></div>
+          <div><label>Excluded IP ranges</label><input type="text" name="excluded_ip"></div>
+        </div></div>
+      <div class="mt"><button class="btn">Create intermediate CA</button></div>
+    </form>
+  </details>
+
+  <details class="card"><summary>Upload existing root / intermediate certificate</summary>
+    <p class="hint">PEM format. Root vs. intermediate is detected automatically. Add the private key if this CA should be able to sign; add parent certificates to complete the chain.</p>
+    <form id="f-upload">
+      <div class="grid">
+        <div><label>Display name (optional)</label><input type="text" name="name"></div>
+        <div><label>Private key password (if encrypted)</label><input type="password" name="key_password" autocomplete="off"></div>
+      </div>
+      <div class="grid mt">
+        <div><label>CA certificate (PEM) <input type="file" data-fill="cert_pem" style="font-size:11px"></label><textarea name="cert_pem" required placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+        <div><label>Private key (PEM, optional) <input type="file" data-fill="key_pem" style="font-size:11px"></label><textarea name="key_pem" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></div>
+        <div><label>Parent chain (PEM, optional) <input type="file" data-fill="chain_pem" style="font-size:11px"></label><textarea name="chain_pem"></textarea></div>
+      </div>
+      <div class="mt"><button class="btn">Import CA</button></div>
+    </form>
+  </details>
+</section>
+
+<section id="tab-issue" class="tab">
+  <div class="card">
+    <h2>Sign a certificate signing request (CSR)</h2>
+    <p class="hint">The CSR's signature is verified before issuing. Choose "Sub-CA" to sign an external intermediate's CSR.</p>
+    <form id="f-csr">
+      <div class="grid"><div><label>Issuing CA</label><select name="ca_id" class="signers"></select></div></div>
+      <div class="mt"><label>CSR (PEM) <input type="file" data-fill="csr_pem" style="font-size:11px"></label><textarea name="csr_pem" required placeholder="-----BEGIN CERTIFICATE REQUEST-----"></textarea></div>
+      <div class="grid mt">
+        <div><label>Additional SANs (comma-separated)</label><input type="text" name="extra_sans" placeholder="DNS:a.example.com, IP:10.0.0.5, email:x@y"></div>
+        <div style="align-self:end"><label class="check"><input type="checkbox" name="copy_csr_sans" checked> Copy SANs requested in the CSR</label></div>
+      </div>
+      <div id="csr-usage" class="usage mt"></div>
+      <div class="mt"><button class="btn">Sign CSR</button></div>
+    </form>
+    <div id="csr-result" class="hidden mt">
+      <div class="row"><strong>Issued certificate</strong><span class="sub" id="csr-meta"></span></div>
+      <textarea id="csr-pem" readonly></textarea>
+      <div class="row mt"><button class="btn secondary small" id="dl-cert">Download certificate</button><button class="btn secondary small" id="dl-full">Download full chain</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Create complete certificate with private key (PKCS#12)</h2>
+    <p class="hint">A new key pair is generated on the server, the certificate is signed, and a password-protected .p12 is returned. The private key is <b>not</b> stored on the server.</p>
+    <form id="f-p12"><div id="p12-subject"></div>
+      <div class="grid mt">
+        <div><label>Issuing CA</label><select name="ca_id" class="signers"></select></div>
+        <div><label>Key type</label><select name="key_type" class="kt"></select></div>
+        <div><label>SANs (comma-separated)</label><input type="text" name="sans" placeholder="host.example.com, 10.0.0.5"></div>
+        <div><label>Export password *</label><input type="password" name="password" required autocomplete="new-password"></div>
+        <div><label>Friendly name</label><input type="text" name="friendly_name"></div>
+      </div>
+      <div class="mt"><label class="check"><input type="checkbox" name="include_chain" checked> Include CA chain</label>
+        <label class="check"><input type="checkbox" name="legacy"> Legacy-compatible encryption (3DES/SHA-1, for old Windows/Java)</label></div>
+      <div id="p12-usage" class="usage mt"></div>
+      <div class="mt"><button class="btn">Generate &amp; download .p12</button></div>
+    </form>
+  </div>
+</section>
+
+<section id="tab-certs" class="tab">
+  <div class="card">
+    <h2>Issued certificates</h2>
+    <p class="hint">Revoked certificates appear in the issuing CA's CRL.</p>
+    <div style="overflow-x:auto"><table id="certs-table"><thead><tr><th>#</th><th>Subject / SANs</th><th>Issuer</th><th>Profile</th><th>Valid until</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section id="tab-acme" class="tab">
+  <div class="card">
+    <h2>ACME server</h2>
+    <p class="hint">RFC 8555 — http-01 and dns-01 (incl. wildcards). Certificates are issued by the CA selected below.</p>
+    <div class="row"><strong>Directory URL:</strong> <span class="mono" id="acme-url"></span></div>
+    <div id="acme-https-warn" class="hidden mt badge bad">Most ACME clients refuse plain HTTP — enable HTTPS below or put a TLS proxy in front.</div>
+    <form id="f-acme" class="grid mt">
+      <div><label>Issuing CA for ACME</label><select name="ca_id" class="signers"></select></div>
+      <div><label>Certificate lifetime (days)</label><input type="number" name="cert_days" min="1" max="825"></div>
+      <div style="align-self:end"><button class="btn">Save</button></div>
+    </form>
+    <div class="sub mt" id="acme-stats"></div>
+    <pre id="acme-example"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Serve this application over HTTPS</h2>
+    <p class="hint">Issues a TLS certificate for this web app from one of your CAs and stores it in the data volume. Restart the container afterwards.</p>
+    <form id="f-tls" class="grid">
+      <div><label>Issuing CA</label><select name="ca_id" class="signers"></select></div>
+      <div><label>Hostnames / IPs (comma-separated)</label><input type="text" name="hostnames" placeholder="ca.example.internal, localhost, 127.0.0.1" required></div>
+      <div><label>Key type</label><select name="key_type" class="kt"></select></div>
+      <div style="align-self:end"><button class="btn">Issue server certificate</button></div>
+    </form>
+  </div>
+</section>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s), $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let META = null, CAS = [];
+
+function toast(msg, err=false) {
+  const t = $('#toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block';
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', err ? 7000 : 3500);
+}
+async function api(path, method='GET', body) {
+  const r = await fetch('/api' + path, { method, headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { let d = r.statusText; try { const j = await r.json(); d = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch {} throw new Error(d); }
+  return r;
+}
+async function guarded(btn, fn) {
+  btn && (btn.disabled = true);
+  try { await fn(); } catch (e) { toast(e.message, true); } finally { btn && (btn.disabled = false); }
+}
+const list = v => (v || '').split(',').map(s => s.trim()).filter(Boolean);
+const fmtDate = s => s ? s.slice(0, 10) : '';
+function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+
+/* ---- tabs ---- */
+$('#nav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#nav button').forEach(x => x.classList.toggle('active', x === b));
+  $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
+  refresh();
+});
+
+/* ---- reusable form pieces ---- */
+function subjectFields(prefix, cnLabel='Common name') {
+  return `<div class="grid" data-subject="${prefix}">
+    <div><label>${cnLabel}</label><input type="text" name="cn"></div>
+    <div><label>Organization</label><input type="text" name="o"></div>
+    <div><label>Org. unit</label><input type="text" name="ou"></div>
+    <div><label>Country (2 letters)</label><input type="text" name="c" maxlength="2"></div>
+    <div><label>State / province</label><input type="text" name="st"></div>
+    <div><label>Locality</label><input type="text" name="l"></div>
+    <div><label>E-mail</label><input type="text" name="email"></div></div>`;
+}
+function readSubject(root) {
+  const s = {}; $$('input', root).forEach(i => { if (i.value.trim()) s[i.name] = i.value.trim(); }); return s;
+}
+function usageFields(host) {
+  const id = host.id;
+  host.innerHTML = `
+    <div class="grid">
+      <div><label>Certificate type / usage</label><select class="u-profile">${META.profiles.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('')}</select></div>
+      <div><label>Validity (days)</label><input type="number" class="u-days" value="365" min="1"></div>
+    </div>
+    <div class="u-custom hidden subtle-box">
+      <div class="sub">Key usage</div>${META.key_usages.map(k => `<label class="check"><input type="checkbox" class="u-ku" value="${k}">${k}</label>`).join('')}
+      <div class="sub mt">Extended key usage</div>${META.extended_key_usages.map(k => `<label class="check"><input type="checkbox" class="u-eku" value="${k}">${k}</label>`).join('')}
+      <div class="mt"><label class="check"><input type="checkbox" class="u-isca"> Is a CA (BasicConstraints CA:TRUE)</label></div>
+    </div>
+    <div class="u-ca hidden subtle-box">
+      <div class="grid">
+        <div><label>Path length (empty = unlimited)</label><input type="number" class="u-pl" min="0" max="10" placeholder="0"></div>
+        <div><label>Permitted DNS</label><input type="text" class="u-pdns"></div>
+        <div><label>Excluded DNS</label><input type="text" class="u-edns"></div>
+        <div><label>Permitted IP (CIDR)</label><input type="text" class="u-pip"></div>
+        <div><label>Excluded IP (CIDR)</label><input type="text" class="u-eip"></div>
+      </div></div>`;
+  const upd = () => {
+    const p = $('.u-profile', host).value;
+    $('.u-custom', host).classList.toggle('hidden', p !== 'custom');
+    $('.u-ca', host).classList.toggle('hidden', !(p === 'ca' || (p === 'custom' && $('.u-isca', host).checked)));
+    if (p === 'ca' && !$('.u-pl', host).value) $('.u-pl', host).value = 0;
+  };
+  host.addEventListener('change', upd); upd();
+}
+function readUsage(host) {
+  const p = $('.u-profile', host).value, pl = $('.u-pl', host).value;
+  return { profile: p, days: +$('.u-days', host).value || 365,
+    key_usage: $$('.u-ku:checked', host).map(x => x.value), extended_key_usage: $$('.u-eku:checked', host).map(x => x.value),
+    is_ca: $('.u-isca', host).checked, path_length: pl === '' ? null : +pl,
+    constraints: { permitted_dns: list($('.u-pdns', host).value), excluded_dns: list($('.u-edns', host).value),
+                   permitted_ip: list($('.u-pip', host).value), excluded_ip: list($('.u-eip', host).value) } };
+}
+$$('input[type=file][data-fill]').forEach(f => f.addEventListener('change', async () => {
+  const ta = f.closest('form').querySelector(`[name=${f.dataset.fill}]`); if (f.files[0]) ta.value = await f.files[0].text();
+}));
+
+/* ---- data loading ---- */
+async function refresh() {
+  CAS = await (await api('/cas')).json();
+  renderCAs();
+  const signers = CAS.filter(c => c.has_key);
+  $$('select.signers').forEach(sel => {
+    const keep = sel.value;
+    sel.innerHTML = signers.length ? signers.map(c => `<option value="${c.id}">${esc(c.name)} (${c.kind})</option>`).join('') : '<option value="">— create a CA first —</option>';
+    if (keep) sel.value = keep;
+  });
+  renderCerts(); renderAcme();
+}
+function renderCAs() {
+  const tb = $('#cas-table tbody');
+  tb.innerHTML = CAS.length ? CAS.map(c => {
+    const exp = new Date(c.not_after) < new Date();
+    return `<tr><td><strong>${esc(c.name)}</strong><div class="sub">#${c.id}${c.parent_id ? ' · issued by #' + c.parent_id : ''}</div>
+      ${c.acme_default ? '<span class="badge ok">ACME issuer</span> ' : ''}${c.has_key ? '' : '<span class="badge">no key</span> '}${!c.complete_chain ? '<span class="badge bad">chain incomplete</span>' : ''}</td>
+      <td><span class="badge ${c.kind === 'root' ? 'root' : ''}">${c.kind}</span>${c.path_len != null ? `<div class="sub">pathLen ${c.path_len}</div>` : ''}</td>
+      <td class="mono">${esc(c.subject)}</td><td>${fmtDate(c.not_after)}${exp ? ' <span class="badge bad">expired</span>' : ''}</td>
+      <td><div class="row"><a href="/api/cas/${c.id}/cert.pem"><button class="btn secondary small">Cert</button></a>
+        <a href="/api/cas/${c.id}/chain.pem"><button class="btn secondary small">Chain</button></a>
+        ${c.has_key ? `<a href="/api/cas/${c.id}/crl.pem"><button class="btn secondary small">CRL</button></a>
+        <button class="btn secondary small" data-acme="${c.id}">Use for ACME</button>` : ''}
+        <button class="btn danger small" data-del="${c.id}">Delete</button></div></td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="sub">No CAs yet — create or upload a root certificate below.</td></tr>';
+}
+async function renderCerts() {
+  const certs = await (await api('/certs')).json();
+  $('#certs-table tbody').innerHTML = certs.length ? certs.map(c => `<tr>
+    <td>${c.id}</td><td><div class="mono">${esc(c.subject)}</div><div class="sub">${esc(c.sans)}</div></td>
+    <td>${esc(c.ca_name)}</td><td>${esc(c.profile)}<div class="sub">${esc(c.source)}</div></td><td>${fmtDate(c.not_after)}</td>
+    <td>${c.revoked_at ? `<span class="badge bad">revoked ${fmtDate(c.revoked_at)}</span><div class="sub">${esc(c.revoke_reason)}</div>` : '<span class="badge ok">valid</span>'}</td>
+    <td><div class="row"><a href="/api/certs/${c.id}/cert.pem"><button class="btn secondary small">PEM</button></a>
+      <a href="/api/certs/${c.id}/fullchain.pem"><button class="btn secondary small">Full chain</button></a>
+      ${c.revoked_at ? '' : `<button class="btn danger small" data-revoke="${c.id}">Revoke</button>`}</div></td></tr>`).join('')
+    : '<tr><td colspan="7" class="sub">Nothing issued yet.</td></tr>';
+}
+async function renderAcme() {
+  const a = await (await api('/acme')).json();
+  $('#acme-url').textContent = a.directory_url;
+  $('#acme-https-warn').classList.toggle('hidden', a.https);
+  const f = $('#f-acme'); if (a.ca_id) f.ca_id.value = a.ca_id; f.cert_days.value = a.cert_days;
+  $('#acme-stats').textContent = `${a.accounts} account(s), ${a.orders} order(s)` +
+    (a.skip_validation ? ' · ⚠ challenge validation is DISABLED (ACME_SKIP_VALIDATION)' : '') +
+    (a.allowed_domains.length ? ' · restricted to: ' + a.allowed_domains.join(', ') : ' · any domain allowed') +
+    ` · http-01 port ${a.http01_port}`;
+  $('#acme-example').textContent =
+`# trust the root first (download its certificate from the Authorities tab), then:
+export REQUESTS_CA_BUNDLE=/path/to/root.pem
+certbot certonly --standalone --server ${a.directory_url} -d host.example.com
+
+# or with lego / acme.sh
+lego --server ${a.directory_url} --email you@example.com -d host.example.com --http run
+acme.sh --issue --server ${a.directory_url} -d host.example.com --standalone`;
+}
+
+/* ---- actions ---- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.del) guarded(t, async () => { if (!confirm('Delete this CA and the certificate records it issued?')) return; await api('/cas/' + t.dataset.del, 'DELETE'); toast('CA deleted'); refresh(); });
+  if (t.dataset.acme) guarded(t, async () => { await api('/acme', 'PUT', { ca_id: +t.dataset.acme }); toast('ACME issuer updated'); refresh(); });
+  if (t.dataset.revoke) guarded(t, async () => {
+    const reason = prompt('Revocation reason:\n' + META.revoke_reasons.join(', '), 'unspecified'); if (reason === null) return;
+    await api(`/certs/${t.dataset.revoke}/revoke`, 'POST', { reason }); toast('Certificate revoked'); refresh(); });
+});
+const submit = (sel, fn) => $(sel).addEventListener('submit', e => { e.preventDefault(); guarded($('button.btn', e.target), () => fn(e.target)); });
+const num = v => v === '' || v == null ? null : +v;
+
+submit('#f-root', async f => {
+  const c = $('#root-subject'); const fd = Object.fromEntries(new FormData(f));
+  await api('/cas/root', 'POST', { name: fd.name || null, subject: readSubject(c), key_type: fd.key_type, days: +fd.days, path_length: num(fd.path_length) });
+  toast('Root CA created'); f.reset(); await refresh();
+});
+submit('#f-int', async f => {
+  const fd = Object.fromEntries(new FormData(f));
+  await api('/cas/intermediate', 'POST', { name: fd.name || null, parent_id: +fd.parent_id, subject: readSubject($('#int-subject')), key_type: fd.key_type,
+    days: +fd.days, path_length: num(fd.path_length), constraints: { permitted_dns: list(fd.permitted_dns), excluded_dns: list(fd.excluded_dns), permitted_ip: list(fd.permitted_ip), excluded_ip: list(fd.excluded_ip) } });
+  toast('Intermediate CA created'); await refresh();
+});
+submit('#f-upload', async f => {
+  const fd = Object.fromEntries(new FormData(f));
+  await api('/cas/upload', 'POST', { name: fd.name || null, cert_pem: fd.cert_pem, key_pem: fd.key_pem || null, key_password: fd.key_password || null, chain_pem: fd.chain_pem || null });
+  toast('CA imported'); f.reset(); await refresh();
+});
+let lastCsr = null;
+submit('#f-csr', async f => {
+  const fd = new FormData(f);
+  const res = await (await api('/certs/sign-csr', 'POST', { ca_id: +fd.get('ca_id'), csr_pem: fd.get('csr_pem'), options: readUsage($('#csr-usage')),
+    copy_csr_sans: f.copy_csr_sans.checked, extra_sans: list(fd.get('extra_sans')) })).json();
+  lastCsr = res; $('#csr-pem').value = res.cert_pem; $('#csr-meta').textContent = `serial ${res.serial} · valid until ${fmtDate(res.not_after)}`;
+  $('#csr-result').classList.remove('hidden'); toast('Certificate issued');
+});
+$('#dl-cert').onclick = () => lastCsr && download(new Blob([lastCsr.cert_pem]), `cert-${lastCsr.id}.pem`);
+$('#dl-full').onclick = () => lastCsr && download(new Blob([lastCsr.fullchain_pem]), `cert-${lastCsr.id}-fullchain.pem`);
+submit('#f-p12', async f => {
+  const fd = new FormData(f);
+  const r = await api('/certs/pkcs12', 'POST', { ca_id: +fd.get('ca_id'), subject: readSubject($('#p12-subject')), sans: list(fd.get('sans')), key_type: fd.get('key_type'),
+    options: readUsage($('#p12-usage')), password: fd.get('password'), legacy: f.legacy.checked, include_chain: f.include_chain.checked, friendly_name: fd.get('friendly_name') || null });
+  const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '')?.[1] || 'certificate.p12';
+  download(await r.blob(), name); toast('PKCS#12 generated'); renderCerts();
+});
+submit('#f-acme', async f => { await api('/acme', 'PUT', { ca_id: num(f.ca_id.value), cert_days: num(f.cert_days.value) }); toast('ACME settings saved'); refresh(); });
+submit('#f-tls', async f => {
+  const r = await (await api('/server-tls', 'POST', { ca_id: +f.ca_id.value, hostnames: list(f.hostnames.value), key_type: f.key_type.value })).json();
+  toast(r.message); refresh();
+});
+
+/* ---- init ---- */
+(async () => {
+  META = await (await api('/meta')).json();
+  $$('select.kt').forEach(s => s.innerHTML = META.key_types.map(k => `<option>${k}</option>`).join(''));
+  $('#root-subject').innerHTML = subjectFields('root', 'Common name (e.g. "Example Root CA")');
+  $('#int-subject').innerHTML = subjectFields('int', 'Common name (e.g. "Example Issuing CA 1")');
+  $('#p12-subject').innerHTML = subjectFields('p12', 'Common name (e.g. host name or user)');
+  $('#f-p12 select.kt').value = 'rsa2048'; $('#f-int select.kt').value = 'ec256';
+  $('#f-root select.kt').value = 'ec384';
+  $$('.usage').forEach(usageFields);
+  refresh();
+})().catch(e => toast(e.message, true));
+</script>
+</body>
+</html>
