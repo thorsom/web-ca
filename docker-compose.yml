@@ -1,0 +1,33 @@
+services:
+  ca:
+    build: .
+    image: web-ca:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"      # web UI, REST API and ACME
+      # - "80:8000"      # only needed if you want http-01 validation of names served by THIS host to work
+    environment:
+      # Admin login for the web UI / API. If unset, a random password is generated and printed once in the logs.
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Passphrase encrypting CA private keys at rest. If unset, one is generated in the data volume.
+      # For real deployments set it from a secret and back it up separately from the volume.
+      CA_MASTER_KEY: ${CA_MASTER_KEY:-}
+      # URL clients use to reach this service (used for ACME URLs and for AIA/CRL URLs in issued certs).
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Comma-separated list of domains ACME may issue for (empty = any domain).
+      ACME_ALLOWED_DOMAINS: ${ACME_ALLOWED_DOMAINS:-}
+      ACME_CERT_DAYS: ${ACME_CERT_DAYS:-90}
+      # DANGER: accept every ACME challenge without validating it. Testing only.
+      ACME_SKIP_VALIDATION: ${ACME_SKIP_VALIDATION:-}
+    volumes:
+      - ca-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  ca-data:
